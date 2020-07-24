@@ -16,20 +16,12 @@ Base = declarative_base()
 Session = sessionmaker(bind=db)
 session = Session()
 
-#Restful
-api = Api(app)
-
 #jwt
 jwt = JWTManager(app)
 
-from app.views import User, UserCreation, UserLogin, JWTVerification, Users
+#Restful
+api = Api(app)
 
-
-#Endpoint generation for each resource
-api.add_resource(UserCreation,'/user/create')
-api.add_resource(User,'/user/<int:userId>')
-api.add_resource(UserLogin,'/user/login')
-api.add_resource(JWTVerification, '/jwt')
-api.add_resource(Users, '/users')
-
-
+#Routes Initialization
+from app.routes import initialize_routes
+initialize_routes(api)

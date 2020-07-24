@@ -128,4 +128,6 @@ class Users(Resource):
             result = session.query(UserModel).filter_by(**args).all()
             return users_schema.dump(result), 200
         
-        return {"errors": "No query params received"}
+        result = session.query(UserModel).all()
+
+        return users_schema.dump(result), 200

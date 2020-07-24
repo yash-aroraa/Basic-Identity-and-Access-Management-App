@@ -3,16 +3,17 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_restful import Api
 from sqlalchemy.ext.declarative import declarative_base
-import sqlalchemy
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from flask_jwt_extended import JWTManager
 
 app = Flask(__name__)
 load_dotenv()
 app.secret_key = os.getenv("SECRET_KEY").encode('utf8')
 #Connection to Postgresql
-db = sqlalchemy.create_engine(os.getenv("POSTGRES_DATABASE_URI"))
+db = create_engine(os.getenv("POSTGRES_DATABASE_URI"))
 Base = declarative_base()
-Session = sqlalchemy.orm.sessionmaker(bind=db)
+Session = sessionmaker(bind=db)
 session = Session()
 
 #Restful

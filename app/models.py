@@ -41,8 +41,8 @@ class UserModelSchema(Schema):
     password = fields.Str(required=True)
     phone = fields.Str(required=True, validate=[validate.Regexp('^[0-9]{10}$',error="Not a valid phone number")])
     email = fields.Email(required=True)
-    is_active = fields.Bool(required=True)
-    is_admin = fields.Bool(required=True)
+    is_active = fields.Bool(missing=True)
+    is_admin = fields.Bool(missing=False)
 
     class Meta:
         model = UserModel

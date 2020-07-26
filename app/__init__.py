@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from flask_jwt_extended import JWTManager
+import redis
 
 app = Flask(__name__)
 load_dotenv()
@@ -15,6 +16,9 @@ db = create_engine(os.getenv("POSTGRES_DATABASE_URI"))
 Base = declarative_base()
 Session = sessionmaker(bind=db)
 session = Session()
+
+#redis server initialization
+r = redis.StrictRedis(host="127.0.0.1",port="6379", db=0)
 
 #jwt
 jwt = JWTManager(app)

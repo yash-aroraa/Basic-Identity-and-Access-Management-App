@@ -10,6 +10,19 @@ import hashlib
 import pickle
 
 
+def updateUser(userId, data):
+    user = r.get(name=str(userId))
+    if user:
+        r.delete(userId)
+    userQuery = session.query(UserModel).filter(UserModel.id == userId)
+    user = userQuery.first()
+    if user:
+        userQuery.update(data)
+        session.commit()
+        return {"message": "User updated successfully"}, HTTPStatus.OK
+
+    return {"errors": "User with this id does not exist"}
+
 class UserCreation(Resource):
     @jwt_required
     def post(self):
@@ -53,10 +66,8 @@ class User(Resource):
             data = request.get_json()
             data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
             try:
-                updated_user = user_schema.load(data)
-                user = session.query(UserModel).filter(UserModel.id == userId).update(data)
-                session.commit()
-                return {"message": "User updated successfully"}, HTTPStatus.OK
+                user_schema.load(data)
+                return updateUser(userId, data) 
             except ValidationError as err:
                 return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
             except IntegrityError as err:
@@ -75,11 +86,11 @@ class User(Resource):
                     data[key] = hashlib.sha256(data[key].encode("utf-8")).hexdigest()
 
             try:
-                user = session.query(UserModel).filter(UserModel.id == userId).update(data)
-                session.commit()
-                return {"message": "User updated successfully"}, HTTPStatus.OK
+                return updateUser(userId, data)
             except (IntegrityError, InvalidRequestError) as err:
                 session.rollback()
+                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            except Exception as err:
                 return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST        
         return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN
         
@@ -90,6 +101,7 @@ class User(Resource):
             user = session.query(UserModel).get(userId)
             if user:
                 user.remove_from_db()
+                r.delete(userId)
                 return {"message": "User successfully deleted"}, HTTPStatus.OK
             else:
                 return {"errors": "User does not exist"}, HTTPStatus.NOT_FOUND

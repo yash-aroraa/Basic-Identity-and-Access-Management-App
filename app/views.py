@@ -21,7 +21,7 @@ def updateUser(userId, data):
         session.commit()
         return {"message": "User updated successfully"}, HTTPStatus.OK
 
-    return {"errors": "User with this id does not exist"}
+    return {"errors": "User with this id does not exist"}, HTTPStatus.NOT_FOUND
 
 class UserCreation(Resource):
     @jwt_required

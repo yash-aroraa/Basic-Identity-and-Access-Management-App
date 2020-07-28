@@ -1,4 +1,4 @@
-from app.views import User, UserCreation, UserLogin, JWTVerification, Users
+from app.controllers import User, UserCreation, UserLogin, JWTVerification, Users
 
 
 #Endpoint generation for each resource

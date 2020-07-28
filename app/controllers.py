@@ -3,11 +3,24 @@ from app.models import user_schema, users_schema, UserModel
 from flask import request
 from flask_restful import Resource
 from marshmallow import ValidationError
-from flask_jwt_extended import create_access_token, decode_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, decode_token, jwt_required, get_jwt_identity, verify_jwt_in_request
 from sqlalchemy.exc import IntegrityError, InvalidRequestError
 from http import HTTPStatus
+from functools import wraps
 import hashlib
 import pickle
+
+def admin_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        verify_jwt_in_request()
+        identity = get_jwt_identity()
+        if identity['is_admin']:
+            return function(*args,**kwargs)
+        else:
+            return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN 
+    return wrapper
+
 
 
 def updateUser(userId, data):
@@ -24,24 +37,21 @@ def updateUser(userId, data):
     return {"errors": "User with this id does not exist"}, HTTPStatus.NOT_FOUND
 
 class UserCreation(Resource):
-    @jwt_required
+    @admin_required
     def post(self):
-        identity = get_jwt_identity()
-        if identity["is_admin"]:
-            data = request.get_json()
-            data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
+        data = request.get_json()
+        data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
 
-            try:
-                new_user = user_schema.load(data)
+        try:
+            new_user = user_schema.load(data)
 
-                new_user.save_to_db()
-                return {"message": "User created successfully"}, HTTPStatus.CREATED
-            except ValidationError as err:
-                return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
-            except IntegrityError as err:
-                session.rollback()
-                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
-        return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN
+            new_user.save_to_db()
+            return {"message": "User created successfully"}, HTTPStatus.CREATED
+        except ValidationError as err:
+            return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
+        except IntegrityError as err:
+            session.rollback()
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
 
 #Resource for reading, updating and deleting a specific user
 class User(Resource):
@@ -59,53 +69,44 @@ class User(Resource):
 
         return pickle.loads(user)
 
-    @jwt_required
+    @admin_required
     def put(self, userId):
-        identity = get_jwt_identity()
-        if identity["is_admin"]:
-            data = request.get_json()
-            data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
-            try:
-                user_schema.load(data)
-                return updateUser(userId, data) 
-            except ValidationError as err:
-                return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
-            except IntegrityError as err:
-                session.rollback()
-                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
-        return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN
+        data = request.get_json()
+        data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
+        try:
+            user_schema.load(data)
+            return updateUser(userId, data) 
+        except ValidationError as err:
+            return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
+        except IntegrityError as err:
+            session.rollback()
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
 
-    @jwt_required
+    @admin_required
     def patch(self, userId):
-        identity = get_jwt_identity()
-        if identity["is_admin"]:
-            data = request.get_json()
-            
-            for key in data:
-                if key=="password":
-                    data[key] = hashlib.sha256(data[key].encode("utf-8")).hexdigest()
-
-            try:
-                return updateUser(userId, data)
-            except (IntegrityError, InvalidRequestError) as err:
-                session.rollback()
-                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
-            except Exception as err:
-                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST        
-        return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN
+        data = request.get_json()
         
-    @jwt_required
+        for key in data:
+            if key=="password":
+                data[key] = hashlib.sha256(data[key].encode("utf-8")).hexdigest()
+
+        try:
+            return updateUser(userId, data)
+        except (IntegrityError, InvalidRequestError) as err:
+            session.rollback()
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+        except Exception as err:
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST        
+        
+    @admin_required
     def delete(self, userId):
-        identity = get_jwt_identity()
-        if identity["is_admin"]:
-            user = session.query(UserModel).get(userId)
-            if user:
-                user.remove_from_db()
-                r.delete(userId)
-                return {"message": "User successfully deleted"}, HTTPStatus.OK
-            else:
-                return {"errors": "User does not exist"}, HTTPStatus.NOT_FOUND
-        return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN
+        user = session.query(UserModel).get(userId)
+        if user:
+            user.remove_from_db()
+            r.delete(userId)
+            return {"message": "User successfully deleted"}, HTTPStatus.OK
+        else:
+            return {"errors": "User does not exist"}, HTTPStatus.NOT_FOUND
 
 class UserLogin(Resource):
     def post(self):

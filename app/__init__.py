@@ -6,6 +6,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from flask_jwt_extended import JWTManager
+from kafka import KafkaProducer
+import json
 import redis
 
 app = Flask(__name__)
@@ -25,6 +27,9 @@ jwt = JWTManager(app)
 
 #Restful
 api = Api(app)
+
+#Kafka producer initialisation
+producer = KafkaProducer(bootstrap_servers="localhost:9092", value_serializer=lambda v: json.dumps(v).encode('utf-8'))
 
 #Routes Initialization
 from app.routes import initialize_routes

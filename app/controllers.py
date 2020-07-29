@@ -1,4 +1,4 @@
-from app import r,session, jwt
+from app import r,session, jwt, producer
 from app.models import user_schema, users_schema, UserModel
 from flask import request
 from flask_restful import Resource
@@ -7,8 +7,9 @@ from flask_jwt_extended import create_access_token, decode_token, jwt_required, 
 from sqlalchemy.exc import IntegrityError, InvalidRequestError
 from http import HTTPStatus
 from functools import wraps
+from datetime import datetime
 import hashlib
-import pickle
+import json
 
 def admin_required(function):
     @wraps(function)
@@ -31,10 +32,17 @@ def updateUser(userId, data):
     user = userQuery.first()
     if user:
         userQuery.update(data)
+        producer.send('ims',kafkaMessage(userId,"UPDATE")) #KAFKA
         session.commit()
         return {"message": "User updated successfully"}, HTTPStatus.OK
 
     return {"errors": "User with this id does not exist"}, HTTPStatus.NOT_FOUND
+
+def kafkaMessage(id, action):
+    return {"userId": id,
+    "action": action,
+    "action_time": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    }
 
 class UserCreation(Resource):
     @admin_required
@@ -44,8 +52,8 @@ class UserCreation(Resource):
 
         try:
             new_user = user_schema.load(data)
-
-            new_user.save_to_db()
+            id = new_user.save_to_db()
+            producer.send('ims',kafkaMessage(id,"CREATE")) #KAFKA
             return {"message": "User created successfully"}, HTTPStatus.CREATED
         except ValidationError as err:
             return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
@@ -58,23 +66,23 @@ class User(Resource):
     def get(self, userId):
         user = r.get(name=str(userId))
 
-        if user is None or len(user) <= 1:
+        if user is None:
             user = session.query(UserModel).get(userId)
             if user:
                 user = user_schema.dump(user)
-                user = pickle.dumps(user)
+                user = json.dumps(user)
                 r.set(name=str(userId), value=user, ex=3000)
             else:
                 return {"errors":"User does not exist"}, HTTPStatus.NOT_FOUND
 
-        return pickle.loads(user)
+        return json.loads(user)
 
     @admin_required
     def put(self, userId):
         data = request.get_json()
-        data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
         try:
             user_schema.load(data)
+            data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
             return updateUser(userId, data) 
         except ValidationError as err:
             return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
@@ -104,6 +112,7 @@ class User(Resource):
         if user:
             user.remove_from_db()
             r.delete(userId)
+            producer.send('ims',kafkaMessage(userId,"DELETE")) #KAFKA
             return {"message": "User successfully deleted"}, HTTPStatus.OK
         else:
             return {"errors": "User does not exist"}, HTTPStatus.NOT_FOUND

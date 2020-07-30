@@ -22,7 +22,13 @@ def admin_required(function):
             return {"errors":"Only admin is permitted for this action"}, HTTPStatus.FORBIDDEN 
     return wrapper
 
-
+def kafkaMessage(model, id, data, action):
+    return {"model": model,
+    "id":id,
+    "data":data,
+    "action": action,
+    "action_time": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    }
 
 def updateUser(userId, data):
     user = r.get(name=str(userId))
@@ -32,17 +38,11 @@ def updateUser(userId, data):
     user = userQuery.first()
     if user:
         userQuery.update(data)
-        producer.send('ims',kafkaMessage(userId,"UPDATE")) #KAFKA
+        producer.send('ims',kafkaMessage("UserModel",userId,data,"UPDATE")) #KAFKA
         session.commit()
         return {"message": "User updated successfully"}, HTTPStatus.OK
 
     return {"errors": "User with this id does not exist"}, HTTPStatus.NOT_FOUND
-
-def kafkaMessage(id, action):
-    return {"userId": id,
-    "action": action,
-    "action_time": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    }
 
 class UserCreation(Resource):
     @admin_required
@@ -53,7 +53,7 @@ class UserCreation(Resource):
         try:
             new_user = user_schema.load(data)
             id = new_user.save_to_db()
-            producer.send('ims',kafkaMessage(id,"CREATE")) #KAFKA
+            producer.send('ims',kafkaMessage("UserModel",id,data,"CREATE")) #KAFKA
             return {"message": "User created successfully"}, HTTPStatus.CREATED
         except ValidationError as err:
             return {"errors":err.messages}, HTTPStatus.BAD_REQUEST

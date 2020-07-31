@@ -8,8 +8,12 @@ from sqlalchemy.exc import IntegrityError, InvalidRequestError
 from http import HTTPStatus
 from functools import wraps
 from datetime import datetime
+from kafka.errors import KafkaError
 import hashlib
 import json
+import logging
+
+logging.basicConfig(filename="errors.log")
 
 def admin_required(function):
     @wraps(function)
@@ -56,10 +60,18 @@ class UserCreation(Resource):
             producer.send('ims',kafkaMessage("UserModel",id,data,"CREATE")) #KAFKA
             return {"message": "User created successfully"}, HTTPStatus.CREATED
         except ValidationError as err:
+            logging.exception(err.messages)
             return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
+            
+        except KafkaError as err:
+            logging.exception(str(err.__cause__))
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
         except IntegrityError as err:
             session.rollback()
+            logging.exception(str(err.__cause__))
             return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
 
 #Resource for reading, updating and deleting a specific user
 class User(Resource):
@@ -85,10 +97,18 @@ class User(Resource):
             data["password"] = hashlib.sha256(data["password"].encode("utf-8")).hexdigest()
             return updateUser(userId, data) 
         except ValidationError as err:
+            logging.exception(str(err.messages))
             return {"errors":err.messages}, HTTPStatus.BAD_REQUEST
+            
+        except KafkaError as err:
+            logging.exception(str(err.__cause__))
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
         except IntegrityError as err:
             session.rollback()
+            logging.exception(str(err.__cause__))
             return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
 
     @admin_required
     def patch(self, userId):
@@ -102,18 +122,31 @@ class User(Resource):
             return updateUser(userId, data)
         except (IntegrityError, InvalidRequestError) as err:
             session.rollback()
+            logging.exception(str(err.__cause__))
             return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
+        except KafkaError as err:
+            logging.exception(str(err.__cause__))
+            return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+            
         except Exception as err:
+            logging.exception(str(err.__cause__))
             return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST        
+            
         
     @admin_required
     def delete(self, userId):
         user = session.query(UserModel).get(userId)
         if user:
-            user.remove_from_db()
-            r.delete(userId)
-            producer.send('ims',kafkaMessage(userId,"DELETE")) #KAFKA
-            return {"message": "User successfully deleted"}, HTTPStatus.OK
+            try:
+                user.remove_from_db()
+                r.delete(userId)
+                producer.send('ims',kafkaMessage("UserModel",userId,None,"DELETE")) #KAFKA
+                return {"message": "User successfully deleted"}, HTTPStatus.OK
+            except KafkaError as err:
+                logging.exception(str(err.__cause__))
+                return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST
+                
         else:
             return {"errors": "User does not exist"}, HTTPStatus.NOT_FOUND
 
@@ -152,7 +185,9 @@ class Users(Resource):
                 result = session.query(UserModel).filter_by(**args).all()
                 return users_schema.dump(result), HTTPStatus.OK
             except InvalidRequestError as err:
+                logging.exception(str(err.__cause__))
                 return {"errors":str(err.__cause__)}, HTTPStatus.BAD_REQUEST                
+                
         
         result = session.query(UserModel).all()
 
